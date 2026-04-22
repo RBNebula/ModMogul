@@ -253,8 +253,8 @@ namespace ModMogul
 				UnityEngine.Object.DontDestroyOnLoad(rt.Def);
 				rt.Def.hideFlags = HideFlags.HideAndDontSave;
 
-				rt.Def.Name = s.DisplayName;
-				rt.Def.Description = s.Description;
+				rt.Def.FallbackName = s.DisplayName;
+				rt.Def.FallbackDescription = s.Description;
 				rt.Def.MaxInventoryStackSize = s.MaxStackSize;
 				rt.Def.QButtonFunction = s.QFunction;
 
@@ -280,8 +280,6 @@ namespace ModMogul
 				rt.ShopItemDef.name = s.InternalName + "_ShopItem";
 				UnityEngine.Object.DontDestroyOnLoad(rt.ShopItemDef);
 				rt.ShopItemDef.hideFlags = HideFlags.HideAndDontSave;
-
-				rt.ShopItemDef.UseNameAndDescriptionOfBuildingDefinition = true;
 				rt.ShopItemDef.BuildingInventoryDefinition = rt.Def;
 				rt.ShopItemDef.Price = s.Price;
 				rt.ShopItemDef.IsLockedByDefault = s.IsLockedByDefault;
@@ -305,18 +303,28 @@ namespace ModMogul
 		{
 			if (allCats == null) return;
 
-			var cat = allCats.FirstOrDefault(c => c != null && c.CategoryName == shopCategory && !c.IsAnyHolidayCategory());
+			var cat = allCats.FirstOrDefault(c => c != null
+				&& !c.IsAnyHolidayCategory()
+				&& (c.CategoryID == shopCategory || c.FallbackCategoryName == shopCategory));
 			if (cat == null)
 			{
 				cat = new ShopCategory
 				{
-					CategoryName = shopCategory,
+					CategoryID = shopCategory,
+					FallbackCategoryName = shopCategory,
 					ShopItemDefinitions = new List<ShopItemDefinition>(),
 					ShopItems = new List<ShopItem>(),
 					DontShowIfAllItemsAreLocked = false,
 					HolidayType = HolidayType.None
 				};
 				allCats.Add(cat);
+			}
+			else
+			{
+				if (string.IsNullOrWhiteSpace(cat.CategoryID))
+					cat.CategoryID = shopCategory;
+				if (string.IsNullOrWhiteSpace(cat.FallbackCategoryName))
+					cat.FallbackCategoryName = shopCategory;
 			}
 
 			cat.ShopItemDefinitions ??= new List<ShopItemDefinition>();
@@ -398,7 +406,7 @@ namespace ModMogul
 				{
 					foreach (ItemRuntime i in _itemsByBlockId.Values)
 					{
-						if (i.Spec.DisplayName.Trim() == __instance.Definition.Name.Trim())
+						if (i.Spec.DisplayName.Trim() == __instance.Definition.FallbackName.Trim())
 						{
 							__instance.Definition.GetMainPrefab().transform.localScale = new Vector3(__instance.Definition.GetMainPrefab().transform.localScale.x, -__instance.Definition.GetMainPrefab().transform.localScale.y, __instance.Definition.GetMainPrefab().transform.localScale.z);
 
@@ -425,7 +433,7 @@ namespace ModMogul
 				{
 					foreach (ItemRuntime i in _itemsByBlockId.Values)
 					{
-						if (i.Spec.DisplayName.Trim() == __instance.Definition.Name.Trim())
+						if (i.Spec.DisplayName.Trim() == __instance.Definition.FallbackName.Trim())
 						{
 							__instance.Definition.GetMainPrefab().transform.localScale = new Vector3(__instance.Definition.GetMainPrefab().transform.localScale.x, __instance.Definition.GetMainPrefab().transform.localScale.y, -__instance.Definition.GetMainPrefab().transform.localScale.z);
 							Singleton<BuildingManager>.Instance.CleanUpGhostObject();
