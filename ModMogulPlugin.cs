@@ -93,7 +93,9 @@ namespace ModMogul
 			}
 
 			yield return null;
-			GameObject.FindFirstObjectByType<SavingLoadingManager>().SendMessage("Awake");
+			var savingLoadingManager = GameObject.FindFirstObjectByType<SavingLoadingManager>();
+			if (savingLoadingManager != null)
+				savingLoadingManager.SendMessage("Awake");
 
 			//StartCoroutine(WaitForReturnToMenu());
 		}
