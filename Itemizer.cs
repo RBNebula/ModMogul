@@ -134,7 +134,12 @@ namespace ModMogul
 
 		private static void RegisterWithSaveLoadManager(GameObject savableObjectPrefab)
 		{
-			GameObject.FindFirstObjectByType<SavingLoadingManager>().AllSavableObjectPrefabs.Add(savableObjectPrefab);
+			if (savableObjectPrefab == null) return;
+
+			var savingLoadingManager = GameObject.FindFirstObjectByType<SavingLoadingManager>();
+			if (savingLoadingManager == null) return;
+			if (!savingLoadingManager.AllSavableObjectPrefabs.Contains(savableObjectPrefab))
+				savingLoadingManager.AllSavableObjectPrefabs.Add(savableObjectPrefab);
 		}
 
 		private static void ValidateSpec(ItemSpec spec)
@@ -253,8 +258,10 @@ namespace ModMogul
 				UnityEngine.Object.DontDestroyOnLoad(rt.Def);
 				rt.Def.hideFlags = HideFlags.HideAndDontSave;
 
-				rt.Def.Name = s.DisplayName;
-				rt.Def.Description = s.Description;
+				SetFieldIfExists(rt.Def, "Name", s.DisplayName);
+				SetFieldIfExists(rt.Def, "Description", s.Description);
+				SetFieldIfExists(rt.Def, "FallbackName", s.DisplayName);
+				SetFieldIfExists(rt.Def, "FallbackDescription", s.Description);
 				rt.Def.MaxInventoryStackSize = s.MaxStackSize;
 				rt.Def.QButtonFunction = s.QFunction;
 
@@ -280,8 +287,7 @@ namespace ModMogul
 				rt.ShopItemDef.name = s.InternalName + "_ShopItem";
 				UnityEngine.Object.DontDestroyOnLoad(rt.ShopItemDef);
 				rt.ShopItemDef.hideFlags = HideFlags.HideAndDontSave;
-
-				rt.ShopItemDef.UseNameAndDescriptionOfBuildingDefinition = true;
+				SetFieldIfExists(rt.ShopItemDef, "UseNameAndDescriptionOfBuildingDefinition", !HasField(rt.Def, "FallbackName"));
 				rt.ShopItemDef.BuildingInventoryDefinition = rt.Def;
 				rt.ShopItemDef.Price = s.Price;
 				rt.ShopItemDef.IsLockedByDefault = s.IsLockedByDefault;
@@ -305,18 +311,30 @@ namespace ModMogul
 		{
 			if (allCats == null) return;
 
-			var cat = allCats.FirstOrDefault(c => c != null && c.CategoryName == shopCategory && !c.IsAnyHolidayCategory());
+			var cat = allCats.FirstOrDefault(c => c != null
+				&& !c.IsAnyHolidayCategory()
+				&& (GetStringField(c, "CategoryID") == shopCategory
+					|| GetStringField(c, "CategoryName") == shopCategory
+					|| GetStringField(c, "FallbackCategoryName") == shopCategory));
 			if (cat == null)
 			{
 				cat = new ShopCategory
 				{
-					CategoryName = shopCategory,
 					ShopItemDefinitions = new List<ShopItemDefinition>(),
 					ShopItems = new List<ShopItem>(),
 					DontShowIfAllItemsAreLocked = false,
 					HolidayType = HolidayType.None
 				};
+				SetFieldIfExists(cat, "CategoryID", shopCategory);
+				SetFieldIfExists(cat, "CategoryName", shopCategory);
+				SetFieldIfExists(cat, "FallbackCategoryName", shopCategory);
 				allCats.Add(cat);
+			}
+			else
+			{
+				SetFieldIfEmpty(cat, "CategoryID", shopCategory);
+				SetFieldIfEmpty(cat, "CategoryName", shopCategory);
+				SetFieldIfEmpty(cat, "FallbackCategoryName", shopCategory);
 			}
 
 			cat.ShopItemDefinitions ??= new List<ShopItemDefinition>();
@@ -345,6 +363,47 @@ namespace ModMogul
 			var defSetField = AccessTools.Field(typeof(EconomyManager), "_allShopItemDefinitions");
 			if (defSetField?.GetValue(__instance) is HashSet<ShopItemDefinition> defSet)
 				defSet.Add(def);
+		}
+
+		private static void SetFieldIfExists(object target, string fieldName, object value)
+		{
+			if (target == null) return;
+
+			AccessTools.Field(target.GetType(), fieldName)?.SetValue(target, value);
+		}
+
+		private static void SetFieldIfEmpty(object target, string fieldName, string value)
+		{
+			if (target == null) return;
+
+			var field = AccessTools.Field(target.GetType(), fieldName);
+			if (field == null) return;
+
+			if (field.GetValue(target) is string current && !string.IsNullOrWhiteSpace(current))
+				return;
+
+			field.SetValue(target, value);
+		}
+
+		private static string GetStringField(object target, string fieldName)
+		{
+			if (target == null) return null;
+
+			return AccessTools.Field(target.GetType(), fieldName)?.GetValue(target) as string;
+		}
+
+		private static bool HasField(object target, string fieldName)
+		{
+			if (target == null) return false;
+
+			return AccessTools.Field(target.GetType(), fieldName) != null;
+		}
+
+		private static string GetDefinitionName(BuildingInventoryDefinition definition)
+		{
+			return GetStringField(definition, "FallbackName")
+				?? GetStringField(definition, "Name")
+				?? string.Empty;
 		}
 
 		public static void RegisterSavableLookupIfPossible(int blockID, BuildingObject prefab)
@@ -398,7 +457,7 @@ namespace ModMogul
 				{
 					foreach (ItemRuntime i in _itemsByBlockId.Values)
 					{
-						if (i.Spec.DisplayName.Trim() == __instance.Definition.Name.Trim())
+						if (i.Spec.DisplayName.Trim() == GetDefinitionName(__instance.Definition).Trim())
 						{
 							__instance.Definition.GetMainPrefab().transform.localScale = new Vector3(__instance.Definition.GetMainPrefab().transform.localScale.x, -__instance.Definition.GetMainPrefab().transform.localScale.y, __instance.Definition.GetMainPrefab().transform.localScale.z);
 
@@ -425,7 +484,7 @@ namespace ModMogul
 				{
 					foreach (ItemRuntime i in _itemsByBlockId.Values)
 					{
-						if (i.Spec.DisplayName.Trim() == __instance.Definition.Name.Trim())
+						if (i.Spec.DisplayName.Trim() == GetDefinitionName(__instance.Definition).Trim())
 						{
 							__instance.Definition.GetMainPrefab().transform.localScale = new Vector3(__instance.Definition.GetMainPrefab().transform.localScale.x, __instance.Definition.GetMainPrefab().transform.localScale.y, -__instance.Definition.GetMainPrefab().transform.localScale.z);
 							Singleton<BuildingManager>.Instance.CleanUpGhostObject();
